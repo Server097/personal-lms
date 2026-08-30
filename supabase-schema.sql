@@ -6,6 +6,7 @@ create table if not exists public.assignments (
   title text not null,
   due date not null,
   points integer not null default 10 check (points > 0),
+  score numeric check (score is null or score >= 0),
   module text,
   notes text,
   done boolean not null default false,

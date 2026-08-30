@@ -84,3 +84,21 @@ textarea{resize:vertical}
   .calendar-row,.plan-row{grid-template-columns:1fr}
   .dialog-actions{grid-template-columns:1fr 1fr}
 }
+
+.card.course-open,.course-card.course-open{width:100%;text-align:left;cursor:pointer}
+.card.course-open:hover,.course-card.course-open:hover{border-color:#b8c3e8}
+.grade-line{display:flex;align-items:baseline;gap:10px}
+.letter{font-size:18px;font-weight:750;color:var(--muted)}
+.course-grade{font-size:24px;font-weight:750;margin:8px 0}
+.course-hero{display:grid;grid-template-columns:1fr 1fr;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:20px;margin:14px 0 18px}
+.hero-grade{font-size:42px;font-weight:800;line-height:1.1;margin:4px 0}
+.hero-grade span{font-size:22px;color:var(--muted)}
+.hero-grade.secondary{font-size:34px}
+.grade-table-wrap{overflow-x:auto}
+.grade-table{width:100%;border-collapse:collapse;min-width:680px}
+.grade-table th,.grade-table td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.grade-table th{font-size:13px;color:var(--muted);font-weight:700}
+.link-btn{border:0;background:transparent;padding:0;color:var(--text);font-weight:650;text-align:left}
+.link-btn:hover{text-decoration:underline}
+.back-courses{margin-bottom:4px}
+@media(max-width:620px){.course-hero{grid-template-columns:1fr}}

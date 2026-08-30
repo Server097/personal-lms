@@ -7,8 +7,10 @@ A tiny self-directed LMS for:
 
 ## What works now
 
-- Dashboard with course progress
-- Assignments with due dates and points
+- Dashboard with real course grades
+- Clickable course pages with gradebooks
+- Assignments with due dates, points possible, and scores earned
+- Future/ungraded work does not count as a zero
 - Overdue highlighting
 - Mark assignments complete
 - Course/module overview
@@ -87,3 +89,12 @@ Use only a Supabase publishable/anon key in browser code. Never expose a `servic
 - research paper reading log
 - CSV backup/export
 - Supabase login + cross-device sync
+
+
+## Gradebook behavior
+
+- A course grade is calculated as total scored points / total possible points for graded assignments.
+- Future assignments with no score do not count against the grade.
+- Checking an assignment complete automatically gives full credit by default.
+- To assign partial credit, open the assignment and edit **Score earned**.
+- Clicking a course card opens its full gradebook.

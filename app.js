@@ -1,41 +1,51 @@
-const STORAGE_KEY = "personalLmsDataV1";
+const STORAGE_KEY = "personalLmsDataV2";
 
 const seed = {
   courses: [
-    { id: "college", name: "College Applications", target: 250 },
-    { id: "usaco", name: "USACO", target: 250 },
-    { id: "research", name: "Research Project", target: 250 }
+    { id: "college", name: "College Applications" },
+    { id: "usaco", name: "USACO" },
+    { id: "research", name: "Research Project" }
   ],
   assignments: [
-    { id: crypto.randomUUID(), courseId:"college", title:"Choose 3 Common App essay topics", due:"2026-09-01", points:10, module:"Personal Statement", notes:"Pick three that could reveal something not obvious elsewhere in the application.", done:false },
-    { id: crypto.randomUUID(), courseId:"college", title:"Draft activities list v1", due:"2026-09-04", points:20, module:"Common App", notes:"Complete all 10 slots even if some are rough.", done:false },
-    { id: crypto.randomUUID(), courseId:"usaco", title:"Solve 5 Silver graph problems", due:"2026-09-02", points:20, module:"Graph Traversal", notes:"Record failed approaches before reading editorials.", done:false },
-    { id: crypto.randomUUID(), courseId:"usaco", title:"Timed practice contest", due:"2026-09-06", points:40, module:"Contest Practice", notes:"Use official contest timing. No editorial checks during the session.", done:false },
-    { id: crypto.randomUUID(), courseId:"research", title:"Annotate 2 papers + synthesis notes", due:"2026-09-03", points:15, module:"Literature Review", notes:"For each paper: claim, method, limitation, relevance.", done:false },
-    { id: crypto.randomUUID(), courseId:"research", title:"Write research question v2", due:"2026-09-07", points:25, module:"Problem Definition", notes:"One primary question plus measurable success criterion.", done:false }
+    { id: crypto.randomUUID(), courseId:"college", title:"Choose 3 Common App essay topics", due:"2026-09-01", points:10, score:null, module:"Personal Statement", notes:"Pick three that could reveal something not obvious elsewhere in the application.", done:false },
+    { id: crypto.randomUUID(), courseId:"college", title:"Draft activities list v1", due:"2026-09-04", points:20, score:null, module:"Common App", notes:"Complete all 10 slots even if some are rough.", done:false },
+    { id: crypto.randomUUID(), courseId:"usaco", title:"Solve 5 Silver graph problems", due:"2026-09-02", points:20, score:null, module:"Graph Traversal", notes:"Record failed approaches before reading editorials.", done:false },
+    { id: crypto.randomUUID(), courseId:"usaco", title:"Timed practice contest", due:"2026-09-06", points:40, score:null, module:"Contest Practice", notes:"Use official contest timing. No editorial checks during the session.", done:false },
+    { id: crypto.randomUUID(), courseId:"research", title:"Annotate 2 papers + synthesis notes", due:"2026-09-03", points:15, score:null, module:"Literature Review", notes:"For each paper: claim, method, limitation, relevance.", done:false },
+    { id: crypto.randomUUID(), courseId:"research", title:"Write research question v2", due:"2026-09-07", points:25, score:null, module:"Problem Definition", notes:"One primary question plus measurable success criterion.", done:false }
   ]
 };
 
 let state = load();
 let currentView = "dashboard";
+let selectedCourseId = null;
 
+function migrate(old){
+  if (!old || !old.assignments) return structuredClone(seed);
+  old.assignments = old.assignments.map(a => ({...a, score: a.score ?? (a.done ? a.points : null)}));
+  return old;
+}
 function load(){
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
-    return structuredClone(seed);
+  const v2 = localStorage.getItem(STORAGE_KEY);
+  if (v2) {
+    try { return migrate(JSON.parse(v2)); } catch {}
   }
-  try { return JSON.parse(saved); }
-  catch { return structuredClone(seed); }
+  const old = localStorage.getItem("personalLmsDataV1");
+  if (old) {
+    try {
+      const migrated = migrate(JSON.parse(old));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      return migrated;
+    } catch {}
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+  return structuredClone(seed);
 }
-function save(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 function course(id){ return state.courses.find(c => c.id === id); }
 function todayISO(){
   const d = new Date();
-  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,"0"), day=String(d.getDate()).padStart(2,"0");
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 function formatDate(s){
   if(!s) return "No due date";
@@ -47,46 +57,65 @@ function statusFor(a){
   if(a.due < todayISO()) return "overdue";
   return "open";
 }
-function pct(courseId){
-  const c = course(courseId);
-  const earned = state.assignments.filter(a=>a.courseId===courseId && a.done).reduce((s,a)=>s+a.points,0);
-  const assigned = state.assignments.filter(a=>a.courseId===courseId).reduce((s,a)=>s+a.points,0);
-  const denominator = Math.max(c.target || 1, assigned || 1);
-  return { earned, assigned, percent: Math.min(100, Math.round(earned/denominator*100)) };
-}
 function escapeHtml(v=""){
-  return String(v).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
+  return String(v).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+}
+function gradeFor(courseId){
+  const graded = state.assignments.filter(a=>a.courseId===courseId && a.score !== null && a.score !== undefined);
+  const earned = graded.reduce((s,a)=>s+Number(a.score||0),0);
+  const possible = graded.reduce((s,a)=>s+Number(a.points||0),0);
+  const percent = possible ? earned/possible*100 : null;
+  return {earned, possible, percent, count: graded.length};
+}
+function letterGrade(percent){
+  if(percent === null) return "—";
+  if(percent >= 93) return "A";
+  if(percent >= 90) return "A−";
+  if(percent >= 87) return "B+";
+  if(percent >= 83) return "B";
+  if(percent >= 80) return "B−";
+  if(percent >= 77) return "C+";
+  if(percent >= 73) return "C";
+  if(percent >= 70) return "C−";
+  if(percent >= 67) return "D+";
+  if(percent >= 63) return "D";
+  if(percent >= 60) return "D−";
+  return "F";
+}
+function completionFor(courseId){
+  const items = state.assignments.filter(a=>a.courseId===courseId);
+  const done = items.filter(a=>a.done).length;
+  return {done,total:items.length,percent:items.length?Math.round(done/items.length*100):0};
 }
 function assignmentRow(a){
   const c = course(a.courseId);
   const s = statusFor(a);
-  const statusLabel = s==="done" ? "Done" : s==="overdue" ? "Overdue" : `${a.points} pts`;
+  const scoreText = a.score === null || a.score === undefined ? `${a.points} pts` : `${a.score}/${a.points}`;
   return `<div class="assignment ${s==="done"?"completed":""} ${s==="overdue"?"overdue":""}">
     <input type="checkbox" class="toggle-done" data-id="${a.id}" ${a.done?"checked":""} aria-label="Mark ${escapeHtml(a.title)} complete">
     <div>
       <div class="assignment-title">${escapeHtml(a.title)}</div>
       <div class="assignment-meta">${escapeHtml(c?.name||"")} · ${formatDate(a.due)} · ${a.points} pts${a.module ? ` · ${escapeHtml(a.module)}`:""}</div>
     </div>
-    <button class="pill ${s}" data-edit="${a.id}">${statusLabel}</button>
+    <button class="pill ${s}" data-edit="${a.id}">${s==="overdue"?"Overdue":s==="done"?scoreText:`${a.points} pts`}</button>
   </div>`;
 }
 function dashboard(){
   const cards = state.courses.map(c=>{
-    const p=pct(c.id);
-    return `<article class="card">
+    const g=gradeFor(c.id), comp=completionFor(c.id);
+    const gradeText = g.percent===null ? "—" : `${g.percent.toFixed(1)}%`;
+    return `<button class="card course-open" data-course="${c.id}">
       <div class="course-name">${escapeHtml(c.name)}</div>
-      <div class="big-stat">${p.percent}%</div>
-      <div class="progress"><span style="width:${p.percent}%"></span></div>
-      <div class="small">${p.earned} pts earned · ${p.assigned} pts assigned</div>
-    </article>`;
+      <div class="grade-line"><span class="big-stat">${gradeText}</span><span class="letter">${letterGrade(g.percent)}</span></div>
+      <div class="progress"><span style="width:${comp.percent}%"></span></div>
+      <div class="small">${comp.done}/${comp.total} assignments complete${g.possible?` · ${g.earned}/${g.possible} graded pts`:""}</div>
+    </button>`;
   }).join("");
-
   const upcoming = [...state.assignments].filter(a=>!a.done).sort((a,b)=>a.due.localeCompare(b.due));
-  const completedPts = state.assignments.filter(a=>a.done).reduce((s,a)=>s+a.points,0);
   return `<div class="cards">${cards}</div>
     <section class="panel">
       <div class="panel-head">
-        <div><h2>Coming up</h2><div class="small">${completedPts} total points completed</div></div>
+        <div><h2>Coming up</h2><div class="small">Future ungraded assignments do not count against your grade.</div></div>
       </div>
       <div class="assignment-list">${upcoming.length?upcoming.map(assignmentRow).join(""):`<div class="empty">Nothing due. Add your next checkpoint.</div>`}</div>
     </section>`;
@@ -94,18 +123,53 @@ function dashboard(){
 function coursesView(){
   return `<div class="course-grid">${state.courses.map(c=>{
     const as=state.assignments.filter(a=>a.courseId===c.id);
-    const modules=[...new Set(as.map(a=>a.module||"General"))];
-    const p=pct(c.id);
-    return `<section class="panel course-card">
+    const g=gradeFor(c.id), comp=completionFor(c.id);
+    const gradeText=g.percent===null?"No grade yet":`${g.percent.toFixed(1)}% · ${letterGrade(g.percent)}`;
+    return `<button class="panel course-card course-open" data-course="${c.id}">
       <h3>${escapeHtml(c.name)}</h3>
-      <div class="small">${p.percent}% progress · ${as.filter(a=>a.done).length}/${as.length} assignments complete</div>
-      <div class="progress"><span style="width:${p.percent}%"></span></div>
-      ${modules.map(m=>{
-        const items=as.filter(a=>(a.module||"General")===m);
-        return `<div class="module"><strong>${escapeHtml(m)}</strong><div class="small">${items.filter(a=>a.done).length}/${items.length} complete</div></div>`;
-      }).join("") || `<div class="empty">No assignments yet.</div>`}
-    </section>`;
+      <div class="course-grade">${gradeText}</div>
+      <div class="small">${comp.done}/${comp.total} assignments complete</div>
+      <div class="progress"><span style="width:${comp.percent}%"></span></div>
+      <div class="small">Open gradebook →</div>
+    </button>`;
   }).join("")}</div>`;
+}
+function courseDetailView(){
+  const c=course(selectedCourseId);
+  if(!c) return coursesView();
+  const as=state.assignments.filter(a=>a.courseId===c.id).sort((a,b)=>a.due.localeCompare(b.due));
+  const g=gradeFor(c.id), comp=completionFor(c.id);
+  const gradeText=g.percent===null?"—":`${g.percent.toFixed(1)}%`;
+  return `<button class="ghost back-courses">← All courses</button>
+  <section class="course-hero">
+    <div>
+      <div class="small">Course grade</div>
+      <div class="hero-grade">${gradeText} <span>${letterGrade(g.percent)}</span></div>
+      <div class="small">${g.possible?`${g.earned} / ${g.possible} graded points`:"No graded assignments yet"}</div>
+    </div>
+    <div>
+      <div class="small">Completion</div>
+      <div class="hero-grade secondary">${comp.percent}%</div>
+      <div class="small">${comp.done} / ${comp.total} assignments complete</div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head">
+      <div><h2>${escapeHtml(c.name)} gradebook</h2><div class="small">Only assignments with a score count toward the course grade.</div></div>
+    </div>
+    <div class="grade-table-wrap">
+      <table class="grade-table">
+        <thead><tr><th>Assignment</th><th>Due</th><th>Score</th><th>Out of</th><th>Status</th></tr></thead>
+        <tbody>${as.map(a=>`<tr>
+          <td><button class="link-btn" data-edit="${a.id}">${escapeHtml(a.title)}</button><div class="small">${escapeHtml(a.module||"General")}</div></td>
+          <td>${formatDate(a.due)}</td>
+          <td>${a.score===null||a.score===undefined?"—":a.score}</td>
+          <td>${a.points}</td>
+          <td>${a.score===null||a.score===undefined?(a.done?"Completed, ungraded":"Not graded"):"Graded"}</td>
+        </tr>`).join("") || `<tr><td colspan="5" class="empty">No assignments yet.</td></tr>`}</tbody>
+      </table>
+    </div>
+  </section>`;
 }
 function calendarView(){
   const rows=[...state.assignments].sort((a,b)=>a.due.localeCompare(b.due));
@@ -134,26 +198,48 @@ function render(){
   const app=document.getElementById("app");
   const title=document.getElementById("viewTitle");
   const subtitle=document.getElementById("viewSubtitle");
-  const map={
-    dashboard:["Dashboard","Your current academic workload, in one place.",dashboard],
-    courses:["Courses","Progress by goal and module.",coursesView],
-    calendar:["Calendar","All deadlines in chronological order.",calendarView],
-    planning:["Planning mode","Adjust deadlines intentionally rather than impulsively.",planningView]
-  };
-  const [t,s,fn]=map[currentView];
-  title.textContent=t; subtitle.textContent=s; app.innerHTML=fn();
+  if(currentView==="course"){
+    const c=course(selectedCourseId);
+    title.textContent=c?.name||"Course";
+    subtitle.textContent="Assignments, progress, and gradebook.";
+    app.innerHTML=courseDetailView();
+  } else {
+    const map={
+      dashboard:["Dashboard","Your current academic workload, in one place.",dashboard],
+      courses:["Courses","Open a course to view its gradebook.",coursesView],
+      calendar:["Calendar","All deadlines in chronological order.",calendarView],
+      planning:["Planning mode","Adjust deadlines intentionally rather than impulsively.",planningView]
+    };
+    const [t,s,fn]=map[currentView];
+    title.textContent=t; subtitle.textContent=s; app.innerHTML=fn();
+  }
   bindDynamic();
 }
 function bindDynamic(){
   document.querySelectorAll(".toggle-done").forEach(el=>el.addEventListener("change",()=>{
-    const a=state.assignments.find(x=>x.id===el.dataset.id); if(a){a.done=el.checked;save();render();}
+    const a=state.assignments.find(x=>x.id===el.dataset.id);
+    if(!a) return;
+    if(el.checked && (a.score===null || a.score===undefined)) {
+      a.done=true;
+      a.score=a.points;
+    } else if(!el.checked) {
+      a.done=false;
+      a.score=null;
+    } else a.done=el.checked;
+    save();render();
   }));
   document.querySelectorAll("[data-edit]").forEach(el=>el.addEventListener("click",()=>openDialog(el.dataset.edit)));
+  document.querySelectorAll(".course-open").forEach(el=>el.addEventListener("click",()=>{
+    selectedCourseId=el.dataset.course; currentView="course"; render();
+  }));
+  document.querySelectorAll(".back-courses").forEach(el=>el.addEventListener("click",()=>{
+    currentView="courses"; selectedCourseId=null; render();
+  }));
   document.querySelectorAll("[data-plan-date]").forEach(el=>el.addEventListener("change",()=>{
     const a=state.assignments.find(x=>x.id===el.dataset.planDate); if(a){a.due=el.value;save();render();}
   }));
   document.querySelectorAll("[data-plan-points]").forEach(el=>el.addEventListener("change",()=>{
-    const a=state.assignments.find(x=>x.id===el.dataset.planPoints); if(a){a.points=Math.max(1,Math.min(500,Number(el.value)||1));save();render();}
+    const a=state.assignments.find(x=>x.id===el.dataset.planPoints); if(a){a.points=Math.max(1,Math.min(500,Number(el.value)||1)); if(a.score!==null && a.score>a.points)a.score=a.points;save();render();}
   }));
 }
 function openDialog(id=null){
@@ -165,6 +251,7 @@ function openDialog(id=null){
   document.getElementById("courseInput").value=a?.courseId||state.courses[0].id;
   document.getElementById("dueInput").value=a?.due||todayISO();
   document.getElementById("pointsInput").value=a?.points||10;
+  document.getElementById("scoreInput").value=(a?.score===null || a?.score===undefined)?"":a.score;
   document.getElementById("moduleInput").value=a?.module||"";
   document.getElementById("notesInput").value=a?.notes||"";
   document.getElementById("deleteAssignmentBtn").classList.toggle("hidden",!a);
@@ -174,7 +261,7 @@ function closeDialog(){ document.getElementById("assignmentDialog").close(); }
 
 document.getElementById("courseInput").innerHTML=state.courses.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
 document.querySelectorAll(".nav-btn").forEach(b=>b.addEventListener("click",()=>{
-  currentView=b.dataset.view;
+  currentView=b.dataset.view; selectedCourseId=null;
   document.querySelectorAll(".nav-btn").forEach(x=>x.classList.toggle("active",x===b));
   render();
 }));
@@ -185,15 +272,20 @@ document.getElementById("cancelDialog").addEventListener("click",closeDialog);
 document.getElementById("assignmentForm").addEventListener("submit",e=>{
   e.preventDefault();
   const id=document.getElementById("assignmentId").value;
+  const points=Math.max(1,Math.min(500,Number(document.getElementById("pointsInput").value)||10));
+  const scoreRaw=document.getElementById("scoreInput").value.trim();
+  const score=scoreRaw===""?null:Math.max(0,Math.min(points,Number(scoreRaw)));
+  const old=id?state.assignments.find(a=>a.id===id):null;
   const payload={
     id:id||crypto.randomUUID(),
     title:document.getElementById("titleInput").value.trim(),
     courseId:document.getElementById("courseInput").value,
     due:document.getElementById("dueInput").value,
-    points:Math.max(1,Math.min(500,Number(document.getElementById("pointsInput").value)||10)),
+    points,
+    score,
     module:document.getElementById("moduleInput").value.trim(),
     notes:document.getElementById("notesInput").value.trim(),
-    done:id ? (state.assignments.find(a=>a.id===id)?.done||false) : false
+    done: score!==null ? true : (old?.done||false)
   };
   if(!payload.title||!payload.due)return;
   const idx=state.assignments.findIndex(a=>a.id===payload.id);
