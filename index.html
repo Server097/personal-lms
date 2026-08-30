@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Personal LMS</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">My LMS</div>
+      <nav>
+        <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+        <button class="nav-btn" data-view="courses">Courses</button>
+        <button class="nav-btn" data-view="calendar">Calendar</button>
+        <button class="nav-btn" data-view="planning">Planning mode</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div id="storageBadge" class="badge">Local storage</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="viewTitle">Dashboard</h1>
+          <p id="viewSubtitle">Your current academic workload, in one place.</p>
+        </div>
+        <button id="addAssignmentBtn" class="primary">+ New assignment</button>
+      </header>
+
+      <section id="app"></section>
+    </main>
+  </div>
+
+  <dialog id="assignmentDialog">
+    <form method="dialog" id="assignmentForm" class="form-card">
+      <div class="dialog-head">
+        <div>
+          <h2 id="dialogTitle">New assignment</h2>
+          <p>Create a concrete checkpoint with a real due date.</p>
+        </div>
+        <button type="button" id="closeDialog" class="ghost">✕</button>
+      </div>
+
+      <input type="hidden" id="assignmentId" />
+
+      <label>
+        Title
+        <input id="titleInput" required maxlength="120" placeholder="e.g. Draft Common App essay v1" />
+      </label>
+
+      <div class="grid-2">
+        <label>
+          Course
+          <select id="courseInput" required></select>
+        </label>
+        <label>
+          Due date
+          <input id="dueInput" type="date" required />
+        </label>
+      </div>
+
+      <div class="grid-2">
+        <label>
+          Points
+          <input id="pointsInput" type="number" min="1" max="500" value="10" required />
+        </label>
+        <label>
+          Module / category
+          <input id="moduleInput" maxlength="80" placeholder="e.g. Essays" />
+        </label>
+      </div>
+
+      <label>
+        Notes
+        <textarea id="notesInput" rows="3" maxlength="1000" placeholder="Definition of done, link, or next step"></textarea>
+      </label>
+
+      <div class="dialog-actions">
+        <button type="button" id="deleteAssignmentBtn" class="danger hidden">Delete</button>
+        <span></span>
+        <button type="button" id="cancelDialog" class="ghost">Cancel</button>
+        <button type="submit" class="primary">Save assignment</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
