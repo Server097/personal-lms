@@ -7,7 +7,14 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <div id="authBox">
+  <input id="email" type="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <button id="signupBtn">Sign Up</button>
+  <button id="loginBtn">Log In</button>
+  </div>
+  <button id="logoutBtn">Log Out</button>
+  <div class="app-shell" id="appShell">
     <aside class="sidebar">
       <div class="brand">My LMS</div>
       <nav>
@@ -92,6 +99,8 @@
     </form>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

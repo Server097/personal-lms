@@ -16,7 +16,10 @@ const seed = {
   ]
 };
 
-let state = load();
+let state = {
+  courses: structuredClone(seed.courses),
+  assignments: []
+};
 let currentView = "dashboard";
 let selectedCourseId = null;
 
@@ -25,23 +28,69 @@ function migrate(old){
   old.assignments = old.assignments.map(a => ({...a, score: a.score ?? (a.done ? a.points : null)}));
   return old;
 }
-function load(){
-  const v2 = localStorage.getItem(STORAGE_KEY);
-  if (v2) {
-    try { return migrate(JSON.parse(v2)); } catch {}
+
+async function loadFromSupabase() {
+  const { data, error } = await supabaseClient
+    .from("assignments")
+    .select("*")
+    .order("due");
+
+  if (error) {
+    console.error(error);
+    return [];
   }
-  const old = localStorage.getItem("personalLmsDataV1");
-  if (old) {
-    try {
-      const migrated = migrate(JSON.parse(old));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-      return migrated;
-    } catch {}
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
-  return structuredClone(seed);
+
+  return data;
 }
-function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+async function addAssignmentToSupabase(assignment) {
+  const {
+    data: { user }
+  } = await supabaseClient.auth.getUser();
+
+  const { data, error } = await supabaseClient
+    .from("assignments")
+    .insert({
+      user_id: user.id,
+      course_id: assignment.courseId,
+      title: assignment.title,
+      due: assignment.due,
+      points: assignment.points,
+      score: assignment.score,
+      module: assignment.module || null,
+      notes: assignment.notes || null,
+      done: assignment.done
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    throw error;
+  }
+
+  return data;
+}
+async function updateAssignmentInSupabase(assignment) {
+  const { error } = await supabaseClient
+    .from("assignments")
+    .update({
+      course_id: assignment.courseId,
+      title: assignment.title,
+      due: assignment.due,
+      points: assignment.points,
+      score: assignment.score,
+      module: assignment.module || null,
+      notes: assignment.notes || null,
+      done: assignment.done
+    })
+    .eq("id", assignment.id);
+
+  if (error) {
+    console.error(error);
+    throw error;
+  }
+}
+
 function course(id){ return state.courses.find(c => c.id === id); }
 function todayISO(){
   const d = new Date();
@@ -216,7 +265,7 @@ function render(){
   bindDynamic();
 }
 function bindDynamic(){
-  document.querySelectorAll(".toggle-done").forEach(el=>el.addEventListener("change",()=>{
+  document.querySelectorAll(".toggle-done").forEach(el=>el.addEventListener("change", async ()=>{
     const a=state.assignments.find(x=>x.id===el.dataset.id);
     if(!a) return;
     if(el.checked && (a.score===null || a.score===undefined)) {
@@ -226,7 +275,8 @@ function bindDynamic(){
       a.done=false;
       a.score=null;
     } else a.done=el.checked;
-    save();render();
+    await updateAssignmentInSupabase(a);
+render();
   }));
   document.querySelectorAll("[data-edit]").forEach(el=>el.addEventListener("click",()=>openDialog(el.dataset.edit)));
   document.querySelectorAll(".course-open").forEach(el=>el.addEventListener("click",()=>{
@@ -235,13 +285,31 @@ function bindDynamic(){
   document.querySelectorAll(".back-courses").forEach(el=>el.addEventListener("click",()=>{
     currentView="courses"; selectedCourseId=null; render();
   }));
-  document.querySelectorAll("[data-plan-date]").forEach(el=>el.addEventListener("change",()=>{
-    const a=state.assignments.find(x=>x.id===el.dataset.planDate); if(a){a.due=el.value;save();render();}
-  }));
-  document.querySelectorAll("[data-plan-points]").forEach(el=>el.addEventListener("change",()=>{
-    const a=state.assignments.find(x=>x.id===el.dataset.planPoints); if(a){a.points=Math.max(1,Math.min(500,Number(el.value)||1)); if(a.score!==null && a.score>a.points)a.score=a.points;save();render();}
-  }));
+  document.querySelectorAll("[data-plan-date]").forEach(el=>el.addEventListener("change", async ()=>{
+  const a=state.assignments.find(x=>x.id===el.dataset.planDate);
+
+  if(a){
+    a.due=el.value;
+    await updateAssignmentInSupabase(a);
+    render();
+  }
+}));
+  document.querySelectorAll("[data-plan-points]").forEach(el=>el.addEventListener("change", async ()=>{
+  const a=state.assignments.find(x=>x.id===el.dataset.planPoints);
+
+  if(a){
+    a.points=Math.max(1,Math.min(500,Number(el.value)||1));
+
+    if(a.score!==null && a.score>a.points){
+      a.score=a.points;
+    }
+
+    await updateAssignmentInSupabase(a);
+    render();
+  }
+}));
 }
+
 function openDialog(id=null){
   const dlg=document.getElementById("assignmentDialog");
   const a=id?state.assignments.find(x=>x.id===id):null;
@@ -269,35 +337,183 @@ document.getElementById("addAssignmentBtn").addEventListener("click",()=>openDia
 document.getElementById("closeDialog").addEventListener("click",closeDialog);
 document.getElementById("cancelDialog").addEventListener("click",closeDialog);
 
-document.getElementById("assignmentForm").addEventListener("submit",e=>{
+document.getElementById("assignmentForm").addEventListener("submit", async e => {
   e.preventDefault();
-  const id=document.getElementById("assignmentId").value;
-  const points=Math.max(1,Math.min(500,Number(document.getElementById("pointsInput").value)||10));
-  const scoreRaw=document.getElementById("scoreInput").value.trim();
-  const score=scoreRaw===""?null:Math.max(0,Math.min(points,Number(scoreRaw)));
-  const old=id?state.assignments.find(a=>a.id===id):null;
-  const payload={
-    id:id||crypto.randomUUID(),
-    title:document.getElementById("titleInput").value.trim(),
-    courseId:document.getElementById("courseInput").value,
-    due:document.getElementById("dueInput").value,
+
+  const id = document.getElementById("assignmentId").value;
+
+  const points = Math.max(
+    1,
+    Math.min(
+      500,
+      Number(document.getElementById("pointsInput").value) || 10
+    )
+  );
+
+  const scoreRaw = document.getElementById("scoreInput").value.trim();
+
+  const score =
+    scoreRaw === ""
+      ? null
+      : Math.max(0, Math.min(points, Number(scoreRaw)));
+
+  const old = id
+    ? state.assignments.find(a => a.id === id)
+    : null;
+
+  const payload = {
+    id: id || crypto.randomUUID(),
+    title: document.getElementById("titleInput").value.trim(),
+    courseId: document.getElementById("courseInput").value,
+    due: document.getElementById("dueInput").value,
     points,
     score,
-    module:document.getElementById("moduleInput").value.trim(),
-    notes:document.getElementById("notesInput").value.trim(),
-    done: score!==null ? true : (old?.done||false)
+    module: document.getElementById("moduleInput").value.trim(),
+    notes: document.getElementById("notesInput").value.trim(),
+    done: score !== null ? true : (old?.done || false)
   };
-  if(!payload.title||!payload.due)return;
-  const idx=state.assignments.findIndex(a=>a.id===payload.id);
-  if(idx>=0)state.assignments[idx]=payload; else state.assignments.push(payload);
-  save(); closeDialog(); render();
+
+  if (!payload.title || !payload.due) return;
+
+  if (!id) {
+  const saved = await addAssignmentToSupabase(payload);
+
+  payload.id = saved.id;
+  state.assignments.push(payload);
+} else {
+  await updateAssignmentInSupabase(payload);
+
+  const idx = state.assignments.findIndex(a => a.id === payload.id);
+
+  if (idx >= 0) {
+    state.assignments[idx] = payload;
+  }
+}
+
+  closeDialog();
+  render();
 });
-document.getElementById("deleteAssignmentBtn").addEventListener("click",()=>{
-  const id=document.getElementById("assignmentId").value;
-  if(!id)return;
-  if(confirm("Delete this assignment?")){
-    state.assignments=state.assignments.filter(a=>a.id!==id);
-    save(); closeDialog(); render();
+document.getElementById("deleteAssignmentBtn").addEventListener("click", async () => {
+  const id = document.getElementById("assignmentId").value;
+
+  if (!id) return;
+
+  if (confirm("Delete this assignment?")) {
+    const { error } = await supabaseClient
+      .from("assignments")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error(error);
+      alert("Could not delete assignment.");
+      return;
+    }
+
+    state.assignments = state.assignments.filter(a => a.id !== id);
+
+    closeDialog();
+    render();
   }
 });
-render();
+async function initializeApp() {
+  const {
+    data: { session }
+  } = await supabaseClient.auth.getSession();
+
+  if (!session) {
+    state.assignments = [];
+    render();
+    return;
+  }
+
+  const assignments = await loadFromSupabase();
+
+  state.assignments = assignments.map(a => ({
+    id: a.id,
+    courseId: a.course_id,
+    title: a.title,
+    due: a.due,
+    points: a.points,
+    score: a.score,
+    module: a.module || "",
+    notes: a.notes || "",
+    done: a.done
+  }));
+
+  render();
+}
+
+initializeApp();
+
+document.getElementById("signupBtn").addEventListener("click", async () => {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const { data, error } = await supabaseClient.auth.signUp({
+    email,
+    password
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Sign-up successful. Check your email if confirmation is required.");
+});
+
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Logged in successfully!");
+});
+
+async function updateAuthUI() {
+  const {
+    data: { session }
+  } = await supabaseClient.auth.getSession();
+
+  const authBox = document.getElementById("authBox");
+  const appShell = document.getElementById("appShell");
+  const logoutBtn = document.getElementById("logoutBtn");
+
+  if (session) {
+  authBox.style.display = "none";
+  appShell.style.display = "flex";
+  logoutBtn.style.display = "block";
+  document.getElementById("storageBadge").textContent = "Supabase";
+} else {
+  authBox.style.display = "block";
+  appShell.style.display = "none";
+  logoutBtn.style.display = "none";
+}
+}
+
+updateAuthUI();
+
+supabaseClient.auth.onAuthStateChange(() => {
+  updateAuthUI();
+});
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  const { error } = await supabaseClient.auth.signOut();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  location.reload();
+});
